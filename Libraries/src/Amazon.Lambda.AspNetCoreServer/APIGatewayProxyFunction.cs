@@ -24,18 +24,6 @@ namespace Amazon.Lambda.AspNetCoreServer
         private readonly IWebHost _host;
         private readonly APIGatewayServer _server;
 
-        // Manage the serialization so the raw requests and responses can be logged.
-        ILambdaSerializer _serializer = new Amazon.Lambda.Serialization.Json.JsonSerializer();
-
-        /// <summary>
-        /// If true the request JSON coming from API Gateway will be logged. This is used to help debugging and not meant to be enabled for production.
-        /// </summary>
-        public bool EnableRequestLogging { get; set; }
-        /// <summary>
-        /// If true the response JSON coming sent to API Gateway will be logged. This is used to help debugging and not meant to be enabled for production.
-        /// </summary>
-        public bool EnableResponseLogging { get; set; }
-
         /// <summary>
         /// Default constructor that AWS Lambda will invoke.
         /// </summary>
@@ -74,42 +62,17 @@ namespace Amazon.Lambda.AspNetCoreServer
         /// <summary>
         /// This method is what the Lambda function handler points to.
         /// </summary>
-        /// <param name="requestStream">Takes in a Stream instead of APIGatewayProxyRequest to get access to the raw event for logging purposes.</param>
+        /// <param name="request"></param>
         /// <param name="lambdaContext"></param>
         /// <returns></returns>
-        public virtual async Task<Stream> FunctionHandlerAsync(Stream requestStream, ILambdaContext lambdaContext)
+        [LambdaSerializerAttribute(typeof(Amazon.Lambda.Serialization.Json.JsonSerializer))]
+        public virtual async Task<APIGatewayProxyResponse> FunctionHandlerAsync(APIGatewayProxyRequest request, ILambdaContext lambdaContext)
         {
-            if (this.EnableRequestLogging)
-            {
-                StreamReader reader = new StreamReader(requestStream);
-                string json = reader.ReadToEnd();
-                lambdaContext.Logger.LogLine(json);
-                requestStream.Position = 0;
-            }
-
-            var request = this._serializer.Deserialize<APIGatewayProxyRequest>(requestStream);
-
             lambdaContext.Logger.Log($"Incoming {request.HttpMethod} requests to {request.Path}");
             InvokeFeatures features = new InvokeFeatures();
             MarshallRequest(features, request);
             var context = this.CreateContext(features);
-
-            var response = await this.ProcessRequest(lambdaContext, context, features);
-
-            var responseStream = new MemoryStream();
-            this._serializer.Serialize<APIGatewayProxyResponse>(response, responseStream);
-            responseStream.Position = 0;
-
-            if (this.EnableResponseLogging)
-            {
-                StreamReader reader = new StreamReader(responseStream);
-                string json = reader.ReadToEnd();
-                lambdaContext.Logger.LogLine(json);
-                responseStream.Position = 0;
-            }
-
-
-            return responseStream;
+            return await this.ProcessRequest(lambdaContext, context, features);
         }
 
         /// <summary>
@@ -228,13 +191,13 @@ namespace Amazon.Lambda.AspNetCoreServer
             // API Gateway delivers the query string in a dictionary but must be reconstructed into the full query string
             // before passing into ASP.NET Core framework.
             var queryStringParameters = apiGatewayRequest.QueryStringParameters;
-            if (queryStringParameters != null)
+            if(queryStringParameters != null)
             {
                 StringBuilder sb = new StringBuilder("?");
                 var encoder = UrlEncoder.Default;
-                foreach (var kvp in queryStringParameters)
+                foreach(var kvp in queryStringParameters)
                 {
-                    if (sb.Length > 1)
+                    if(sb.Length > 1)
                     {
                         sb.Append("&");
                     }
@@ -252,7 +215,7 @@ namespace Amazon.Lambda.AspNetCoreServer
                 }
             }
 
-            if (!requestFeatures.Headers.ContainsKey("Host"))
+            if(!requestFeatures.Headers.ContainsKey("Host"))
             {
                 var apiId = apiGatewayRequest.RequestContext?.ApiId ?? "";
                 var stage = apiGatewayRequest.RequestContext?.Stage ?? "";
@@ -260,10 +223,10 @@ namespace Amazon.Lambda.AspNetCoreServer
                 requestFeatures.Headers["Host"] = $"apigateway-{apiId}-{stage}";
             }
 
-            if (!string.IsNullOrEmpty(apiGatewayRequest.Body))
+            if(!string.IsNullOrEmpty(apiGatewayRequest.Body))
             {
                 Byte[] binaryBody;
-                if (apiGatewayRequest.IsBase64Encoded)
+                if(apiGatewayRequest.IsBase64Encoded)
                 {
                     binaryBody = Convert.FromBase64String(apiGatewayRequest.Body);
                 }
@@ -289,23 +252,23 @@ namespace Amazon.Lambda.AspNetCoreServer
                 StatusCode = responseFeatures.StatusCode != 0 ? responseFeatures.StatusCode : statusCodeIfNotSet
             };
 
-            if (responseFeatures.Headers != null)
+            if(responseFeatures.Headers != null)
             {
                 response.Headers = new Dictionary<string, string>();
-                foreach (var kvp in responseFeatures.Headers)
+                foreach(var kvp in responseFeatures.Headers)
                 {
-                    if (kvp.Value.Count == 1)
+                    if(kvp.Value.Count == 1)
                     {
                         response.Headers[kvp.Key] = kvp.Value[0];
                     }
                     else
                     {
                         response.Headers[kvp.Key] = string.Join(",", kvp.Value);
-                    }
+                    }                    
                 }
             }
 
-            if (responseFeatures.Body != null)
+            if(responseFeatures.Body != null)
             {
                 if (responseFeatures.Body is MemoryStream)
                 {

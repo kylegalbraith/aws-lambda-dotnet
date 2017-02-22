@@ -56,7 +56,7 @@ namespace Amazon.Lambda.Tools
             StringBuilder arguments = new StringBuilder("publish");
             if (!string.IsNullOrEmpty(projectLocation))
             {
-                arguments.Append($" \"{Utilities.DetermineProjectLocation(this._workingDirectory, projectLocation)}\"");
+                arguments.Append($" \"{Utilities.DetemineProjectLocation(this._workingDirectory, projectLocation)}\"");
             }
             if (!string.IsNullOrEmpty(outputLocation))
             {
@@ -113,7 +113,7 @@ namespace Amazon.Lambda.Tools
 
             if (exitCode == 0)
             {
-                ProcessAdditionalFiles(defaults, Utilities.DetermineProjectLocation(this._workingDirectory, projectLocation), outputLocation);
+                FlattenKnownPlatformDependencies(defaults, Utilities.DetemineProjectLocation(this._workingDirectory, projectLocation), outputLocation);
 
                 var chmodPath = FindExecutableInPath("chmod");
                 if (!string.IsNullOrEmpty(chmodPath) && File.Exists(chmodPath))
@@ -160,9 +160,16 @@ namespace Amazon.Lambda.Tools
             return exitCode;
         }
 
-        private void ProcessAdditionalFiles(LambdaToolsDefaults defaults, string projectLocation, string publishLocation)
+        static IList<string> KNOWN_PLATFORM_DEPENDENCIES = new List<string>
         {
-            var listOfDependencies = new List<string>();
+            $"runtimes{Path.DirectorySeparatorChar}unix{Path.DirectorySeparatorChar}lib{Path.DirectorySeparatorChar}netstandard1.3{Path.DirectorySeparatorChar}System.Data.SqlClient.dll",
+            $"runtimes{Path.DirectorySeparatorChar}unix{Path.DirectorySeparatorChar}lib{Path.DirectorySeparatorChar}netstandard1.3{Path.DirectorySeparatorChar}System.IO.Pipes.dll"
+
+        };
+
+        private void FlattenKnownPlatformDependencies(LambdaToolsDefaults defaults, string projectLocation, string publishLocation)
+        {
+            var listOfDependencies = KNOWN_PLATFORM_DEPENDENCIES;
 
             var extraDependences = defaults["additional-files"] as string[];
             if (extraDependences != null)

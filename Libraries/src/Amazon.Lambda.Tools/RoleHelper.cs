@@ -153,11 +153,6 @@ namespace Amazon.Lambda.Tools
 
             });
 
-            if(task.Result == null)
-            {
-                throw new LambdaToolsException($"Role \"{roleName}\" can not be found.", LambdaToolsException.ErrorCode.RoleNotFound);
-            }
-
             return task.Result;
         }
 

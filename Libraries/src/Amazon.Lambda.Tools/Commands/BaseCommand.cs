@@ -71,7 +71,7 @@ namespace Amazon.Lambda.Tools.Commands
             {
                 if (this._defaultConfig == null)
                 {
-                    this._defaultConfig = LambdaToolsDefaultsReader.LoadDefaults(Utilities.DetermineProjectLocation(this.WorkingDirectory, this.ProjectLocation), this.ConfigFile);
+                    this._defaultConfig = LambdaToolsDefaultsReader.LoadDefaults(Utilities.DetemineProjectLocation(this.WorkingDirectory, this.ProjectLocation), this.ConfigFile);
                 }
                 return this._defaultConfig;
             }
@@ -187,14 +187,16 @@ namespace Amazon.Lambda.Tools.Commands
 
         private IAmazonLambda CreateLambdaClient()
         {
-            // If the client is being created then the LambdaTools
+            // If the Lambda client is being created then the LambdaTools
             // is not being invoked from the VS toolkit. The toolkit will pass in
-            // its configured client.
+            // its configured Lambda client.
             SetUserAgentString();
 
 
             AmazonLambdaConfig config = new AmazonLambdaConfig();
-            config.RegionEndpoint = DetermineAWSRegion();
+
+            var regionName = this.GetStringValueOrDefault(this.Region, DefinedCommandOptions.ARGUMENT_AWS_REGION, true);
+            config.RegionEndpoint = RegionEndpoint.GetBySystemName(regionName);
 
             IAmazonLambda client = new AmazonLambdaClient(DetermineAWSCredentials(), config);
             return client;
@@ -202,14 +204,15 @@ namespace Amazon.Lambda.Tools.Commands
 
         private IAmazonCloudFormation CreateCloudFormationClient()
         {
-            // If the client is being created then the LambdaTools
+            // If the CloudFormation client is being created then the LambdaTools
             // is not being invoked from the VS toolkit. The toolkit will pass in
-            // its configured client.
+            // its configured CloudFormation client.
             SetUserAgentString();
 
             AmazonCloudFormationConfig config = new AmazonCloudFormationConfig();
 
-            config.RegionEndpoint = DetermineAWSRegion();
+            var regionName = this.GetStringValueOrDefault(this.Region, DefinedCommandOptions.ARGUMENT_AWS_REGION, true);
+            config.RegionEndpoint = RegionEndpoint.GetBySystemName(regionName);
 
             var client = new AmazonCloudFormationClient(DetermineAWSCredentials(), config);
             return client;
@@ -217,14 +220,17 @@ namespace Amazon.Lambda.Tools.Commands
 
         private IAmazonIdentityManagementService CreateIAMClient()
         {
-            // If the client is being created then the LambdaTools
-            // is not being invoked from the VS toolkit. The toolkit will pass in
-            // its configured Lambda client.
-            SetUserAgentString();
-
             AmazonIdentityManagementServiceConfig config = new AmazonIdentityManagementServiceConfig();
 
-            config.RegionEndpoint = DetermineAWSRegion();
+            var regionName = this.GetStringValueOrDefault(this.Region, DefinedCommandOptions.ARGUMENT_AWS_REGION, true);
+            if (!string.IsNullOrEmpty(regionName))
+            {
+                config.RegionEndpoint = RegionEndpoint.GetBySystemName(regionName);
+            }
+            else
+            {
+                config.RegionEndpoint = RegionEndpoint.USEast1;
+            }
 
             IAmazonIdentityManagementService client = new AmazonIdentityManagementServiceClient(DetermineAWSCredentials(), config);
             return client;
@@ -233,14 +239,10 @@ namespace Amazon.Lambda.Tools.Commands
 
         private IAmazonS3 CreateS3Client()
         {
-            // If the client is being created then the LambdaTools
-            // is not being invoked from the VS toolkit. The toolkit will pass in
-            // its configured client.
-            SetUserAgentString();
-
             AmazonS3Config config = new AmazonS3Config();
 
-            config.RegionEndpoint = DetermineAWSRegion();
+            var regionName = this.GetStringValueOrDefault(this.Region, DefinedCommandOptions.ARGUMENT_AWS_REGION, true);
+            config.RegionEndpoint = RegionEndpoint.GetBySystemName(regionName);
 
             IAmazonS3 client = new AmazonS3Client(DetermineAWSCredentials(), config);
             return client;
@@ -282,35 +284,6 @@ namespace Amazon.Lambda.Tools.Commands
             return credentials;
         }
 
-        private RegionEndpoint DetermineAWSRegion()
-        {
-            // See if a region has been set but don't prompt if not set.
-            var regionName = this.GetStringValueOrDefault(this.Region, DefinedCommandOptions.ARGUMENT_AWS_REGION, false);
-            if(!string.IsNullOrWhiteSpace(regionName))
-            {
-                return RegionEndpoint.GetBySystemName(regionName);
-            }
-
-            // See if we can find a region using the region fallback logic.
-            if(string.IsNullOrWhiteSpace(regionName))
-            {
-                var region = FallbackRegionFactory.GetRegionEndpoint(true);
-                if (region != null)
-                {
-                    return region;
-                }
-            }
-
-            // If we still don't have a region prompt the user for a region.
-            regionName = this.GetStringValueOrDefault(this.Region, DefinedCommandOptions.ARGUMENT_AWS_REGION, true);
-            if (!string.IsNullOrWhiteSpace(regionName))
-            {
-                return RegionEndpoint.GetBySystemName(regionName);
-            }
-
-            throw new LambdaToolsException("Can not determine AWS region. Either configure a default region or use the --region option.", LambdaToolsException.ErrorCode.RegionNotConfigured);
-        }
-
         /// <summary>
         /// Gets the value for the CommandOption either through the property value which means the 
         /// user explicity set the value or through defaults for the project. 
@@ -328,8 +301,7 @@ namespace Amazon.Lambda.Tools.Commands
             if (!string.IsNullOrEmpty(propertyValue))
             {
                 // If the user gave the short name of the role and not the ARN then look up the role and get its ARN.
-                if ((option == DefinedCommandOptions.ARGUMENT_FUNCTION_ROLE || option == DefinedCommandOptions.ARGUMENT_CLOUDFORMATION_ROLE)
-                    && !propertyValue.StartsWith(Constants.IAM_ARN_PREFIX))
+                if (option == DefinedCommandOptions.ARGUMENT_FUNCTION_ROLE && !propertyValue.StartsWith(Constants.IAM_ARN_PREFIX))
                 {
                     return RoleHelper.ExpandRoleName(this.IAMClient, propertyValue);
                 }
@@ -339,9 +311,7 @@ namespace Amazon.Lambda.Tools.Commands
             {
                 var configDefault = DefaultConfig[option.Switch] as string;
                 // If the user gave the short name of the role and not the ARN then look up the role and get its ARN.
-                if (configDefault != null && 
-                    (option == DefinedCommandOptions.ARGUMENT_FUNCTION_ROLE || option == DefinedCommandOptions.ARGUMENT_CLOUDFORMATION_ROLE) && 
-                    !configDefault.StartsWith(Constants.IAM_ARN_PREFIX))
+                if (configDefault != null && option == DefinedCommandOptions.ARGUMENT_FUNCTION_ROLE && !configDefault.StartsWith(Constants.IAM_ARN_PREFIX))
                 {
                     return RoleHelper.ExpandRoleName(this.IAMClient, configDefault);
                 }
